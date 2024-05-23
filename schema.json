@@ -28,6 +28,16 @@
       "seed": {
         "type": "integer",
         "description": "Seed"
+      },
+      "width": {
+        "type": "integer",
+        "readOnly": "true",
+        "description": "Width"
+      },
+      "height": {
+        "type": "integer",
+        "readOnly": "true",
+        "description": "Height"
       }
     },
     "buttons": [
