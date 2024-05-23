@@ -1,0 +1,5 @@
+{
+  "input_image": "https://raw.githubusercontent.com/TencentARC/InstantMesh/main/examples/cartoon_girl.jpg",
+  "sample_steps": 75,
+  "seed": 42
+}
