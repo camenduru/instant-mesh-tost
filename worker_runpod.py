@@ -9,7 +9,6 @@ from diffusers.utils import load_image
 from huggingface_hub import hf_hub_download
 from src.utils.infer_util import remove_background, resize_foreground
 
-import os, json
 from torchvision.transforms import v2
 from omegaconf import OmegaConf
 from einops import repeat
@@ -21,7 +20,11 @@ from src.utils.train_util import instantiate_from_config
 from src.utils.camera_util import (FOV_to_intrinsics, get_zero123plus_input_cameras,get_circular_camera_poses,)
 from src.utils.mesh_util import save_obj, save_obj_with_mtl
 
-import runpod
+import os, json, requests, runpod
+
+discord_token = os.getenv('com_camenduru_discord_token')
+web_uri = os.getenv('com_camenduru_web_uri')
+web_token = os.getenv('com_camenduru_web_token')
 
 def preprocess(input_image, do_remove_background):
     rembg_session = rembg.new_session() if do_remove_background else None
@@ -105,7 +108,6 @@ def make3d(images, model, device, IS_FLEXICUBES, infer_config, export_video, exp
     images = images.unsqueeze(0).to(device)
     images = v2.functional.resize(images, (320, 320), interpolation=3, antialias=True).clamp(0, 1)
     mesh_fpath = tempfile.NamedTemporaryFile(suffix=f".obj", delete=False).name
-    print(mesh_fpath)
     mesh_basename = os.path.basename(mesh_fpath).split('.')[0]
     mesh_dirname = os.path.dirname(mesh_fpath)
     video_fpath = os.path.join(mesh_dirname, f"{mesh_basename}.mp4")
@@ -150,7 +152,7 @@ def generate(input):
     unet_ckpt_path = hf_hub_download(repo_id="TencentARC/InstantMesh", filename="diffusion_pytorch_model.bin", repo_type="model")
     state_dict = torch.load(unet_ckpt_path, map_location='cpu')
     pipeline.unet.load_state_dict(state_dict, strict=True)
-    device = torch.device('cuda:0')
+    device = torch.device('cuda')
     pipeline = pipeline.to(device)
     seed_everything(0)
     mv_images, mv_show_images = generate_mvs(processed_image, sample_steps, seed, pipeline, device)
@@ -176,7 +178,7 @@ def generate(input):
 
     output_video, output_model_obj = make3d(mv_images, model, device, IS_FLEXICUBES, infer_config, export_video, export_texmap)
     mesh_basename = os.path.splitext(output_model_obj)[0]
-    result = output_video, [output_model_obj, mesh_basename+'.mtl', mesh_basename+'.png']
+    result = [output_video, [output_model_obj, mesh_basename+'.mtl', mesh_basename+'.png']]
 
     response = None
     try:
@@ -187,8 +189,7 @@ def generate(input):
         job_id = values['job_id']
         del values['job_id']
 
-        first_key = next(iter(result[0]))
-        file_path = result[0][first_key]
+        file_path = result[0]
         file_paths = result[1]
         default_filename = os.path.basename(file_path)
         files = { default_filename: open(file_path, "rb").read() }
@@ -207,13 +208,11 @@ def generate(input):
         response.raise_for_status()
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
-    finally:
-        if os.path.exists(result):
-            os.remove(result)
 
     if response and response.status_code == 200:
         try:
-            payload = {"jobId": job_id, "result": response.json()['attachments'][0]['url']}
+            urls = [attachment['url'] for attachment in response.json()['attachments']]
+            payload = {"jobId": str(job_id), "result": str(urls)}
             requests.post(f"{web_uri}/api/notify", data=json.dumps(payload), headers={'Content-Type': 'application/json', "authorization": f"{web_token}"})
         except Exception as e:
             print(f"An unexpected error occurred: {e}")
