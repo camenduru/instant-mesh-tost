@@ -1,3 +1,5 @@
+import os, json, requests, runpod
+
 import torch
 import numpy as np
 import rembg
@@ -19,12 +21,6 @@ import imageio
 from src.utils.train_util import instantiate_from_config
 from src.utils.camera_util import (FOV_to_intrinsics, get_zero123plus_input_cameras,get_circular_camera_poses,)
 from src.utils.mesh_util import save_obj, save_obj_with_mtl
-
-import os, json, requests, runpod
-
-discord_token = os.getenv('com_camenduru_discord_token')
-web_uri = os.getenv('com_camenduru_web_uri')
-web_token = os.getenv('com_camenduru_web_token')
 
 def preprocess(input_image, do_remove_background):
     rembg_session = rembg.new_session() if do_remove_background else None
@@ -178,47 +174,71 @@ def generate(input):
 
     output_video, output_model_obj = make3d(mv_images, model, device, IS_FLEXICUBES, infer_config, export_video, export_texmap)
     mesh_basename = os.path.splitext(output_model_obj)[0]
+    
     result = [output_video, [output_model_obj, mesh_basename+'.mtl', mesh_basename+'.png']]
-
-    response = None
     try:
-        source_id = values['source_id']
-        del values['source_id']
-        source_channel = values['source_channel']     
-        del values['source_channel']
+        notify_uri = values['notify_uri']
+        del values['notify_uri']
+        notify_token = values['notify_token']
+        del values['notify_token']
+        discord_id = values['discord_id']
+        del values['discord_id']
+        if(discord_id == "discord_id"):
+            discord_id = os.getenv('com_camenduru_discord_id')
+        discord_channel = values['discord_channel']
+        del values['discord_channel']
+        if(discord_channel == "discord_channel"):
+            discord_channel = os.getenv('com_camenduru_discord_channel')
+        discord_token = values['discord_token']
+        del values['discord_token']
+        if(discord_token == "discord_token"):
+            discord_token = os.getenv('com_camenduru_discord_token')
         job_id = values['job_id']
         del values['job_id']
-
-        file_path = result[0]
-        file_paths = result[1]
-        default_filename = os.path.basename(file_path)
-        files = { default_filename: open(file_path, "rb").read() }
-        for path in file_paths:
+        default_filename = os.path.basename(result[0])
+        with open(result[0], "rb") as file:
+            files = {default_filename: file.read()}
+        for path in result[1]:
             filename = os.path.basename(path)
             with open(path, "rb") as file:
                 files[filename] = file.read()
-
-        payload = {"content": f"{json.dumps(values)} <@{source_id}>"}
+        payload = {"content": f"{json.dumps(values)} <@{discord_id}>"}
         response = requests.post(
-            f"https://discord.com/api/v9/channels/{source_channel}/messages",
+            f"https://discord.com/api/v9/channels/{discord_channel}/messages",
             data=payload,
-            headers={"authorization": f"Bot {discord_token}"},
+            headers={"Authorization": f"Bot {discord_token}"},
             files=files
         )
         response.raise_for_status()
+        result_urls = [attachment['url'] for attachment in response.json()['attachments']]
+        notify_payload = {"jobId": job_id, "result": str(result_urls), "status": "DONE"}
+        web_notify_uri = os.getenv('com_camenduru_web_notify_uri')
+        web_notify_token = os.getenv('com_camenduru_web_notify_token')
+        if(notify_uri == "notify_uri"):
+            requests.post(web_notify_uri, data=json.dumps(notify_payload), headers={'Content-Type': 'application/json', "Authorization": web_notify_token})
+        else:
+            requests.post(web_notify_uri, data=json.dumps(notify_payload), headers={'Content-Type': 'application/json', "Authorization": web_notify_token})
+            requests.post(notify_uri, data=json.dumps(notify_payload), headers={'Content-Type': 'application/json', "Authorization": notify_token})
+        return {"jobId": job_id, "result": str(result_urls), "status": "DONE"}
     except Exception as e:
-        print(f"An unexpected error occurred: {e}")
-
-    if response and response.status_code == 200:
+        error_payload = {"jobId": job_id, "status": "FAILED"}
         try:
-            urls = [attachment['url'] for attachment in response.json()['attachments']]
-            payload = {"jobId": str(job_id), "result": str(urls)}
-            requests.post(f"{web_uri}/api/notify", data=json.dumps(payload), headers={'Content-Type': 'application/json', "authorization": f"{web_token}"})
-        except Exception as e:
-            print(f"An unexpected error occurred: {e}")
-        finally:
-            return {"result": response.json()['attachments'][0]['url']}
-    else:
-        return {"result": "ERROR"}
+            if(notify_uri == "notify_uri"):
+                requests.post(web_notify_uri, data=json.dumps(error_payload), headers={'Content-Type': 'application/json', "Authorization": web_notify_token})
+            else:
+                requests.post(web_notify_uri, data=json.dumps(error_payload), headers={'Content-Type': 'application/json', "Authorization": web_notify_token})
+                requests.post(notify_uri, data=json.dumps(error_payload), headers={'Content-Type': 'application/json', "Authorization": notify_token})
+        except:
+            pass
+        return {"jobId": job_id, "result": f"FAILED: {str(e)}", "status": "FAILED"}
+    finally:
+        if os.path.exists(result[0]):
+            os.remove(result[0])
+        if os.path.exists(result[1][0]):
+            os.remove(result[1][0])
+        if os.path.exists(result[1][1]):
+            os.remove(result[1][1])
+        if os.path.exists(result[1][2]):
+            os.remove(result[1][2])
 
 runpod.serverless.start({"handler": generate})
