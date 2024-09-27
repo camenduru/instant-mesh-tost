@@ -17,6 +17,12 @@
       ],
       "widget": "readme"
     },
+    "upload": {
+      "type": "string",
+      "widget": "upload",
+      "upload_url": "https://litterbox.catbox.moe/resources/internals/api.php",
+      "property": "input_image"
+    },
     "input_image": {
       "type": "string",
       "description": "Input Image URL",
@@ -42,9 +48,9 @@
     },
     "example": {
       "type": "string",
-      "image1": "https://fakeimg.pl/768x1152/282828/eae0d0/?text=input#.png",
+      "image1": "https://fakeimg.pl/1024x1024/282828/eae0d0/?text=input#.png",
       "image2": "https://raw.githubusercontent.com/TencentARC/InstantMesh/main/examples/cartoon_girl.jpg",
-      "image3": "https://fakeimg.pl/768x1152/282828/eae0d0/?text=output#.png",
+      "image3": "https://fakeimg.pl/1024x1024/282828/eae0d0/?text=output#.png",
       "image4": "https://files.catbox.moe/nay5e7.gif",
       "widget": "example"
     }
