@@ -21,4 +21,4 @@ https://twitter.com/camenduru/status/1779931341175288028
 https://github.com/camenduru/InstantMesh-jupyter/assets/54370274/3b25e2fb-9203-4dbe-a202-6205cf2e4438
 
 ### 🏢 Sponsor
-https://runpod.io
+[https://runpod.io](https://runpod.io?ref=iqi9iy8y)
